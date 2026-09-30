@@ -1,9 +1,10 @@
+import ipaddress
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from jwt import PyJWKClient
 
 from app.core.config import get_settings
@@ -20,13 +21,24 @@ def _jwks_client(url: str) -> PyJWKClient:
     return PyJWKClient(url, cache_jwk_set=True, lifespan=300)
 
 
-def current_user(authorization: Annotated[str | None, Header()] = None,
+def current_user(request: Request, authorization: Annotated[str | None, Header()] = None,
                  x_dev_user: Annotated[str | None, Header()] = None) -> Principal:
     settings = get_settings()
     if settings.auth_mode == "development":
         if settings.environment == "production":
             raise HTTPException(status_code=500, detail="Development auth is disabled in production")
-        subject = x_dev_user or "local-citizen"
+        host = request.client.host if request and request.client else ""
+        try:
+            local_request = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local_request = False
+        if not local_request:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Development identity is available only from localhost")
+        if not x_dev_user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Send X-Dev-User for local development or configure OIDC bearer tokens")
+        subject = x_dev_user
         staff_subjects = {value.strip() for value in settings.development_staff_subjects.split(",") if value.strip()}
         role = "admin" if subject in staff_subjects else "citizen"
         return Principal(subject, role)

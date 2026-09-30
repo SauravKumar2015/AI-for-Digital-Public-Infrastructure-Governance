@@ -45,6 +45,9 @@ services:
       APP_NLP_MODE: ${APP_NLP_MODE:-mock}
       APP_NLP_BASE_URL: ${APP_NLP_BASE_URL:-}
       APP_NLP_API_TOKEN: ${APP_NLP_API_TOKEN:-}
+      APP_AUDIO_MODE: ${APP_AUDIO_MODE:-review}
+      APP_GEMINI_API_KEY: ${APP_GEMINI_API_KEY:-}
+      APP_GEMINI_AUDIO_MODEL: ${APP_GEMINI_AUDIO_MODEL:-gemini-2.5-flash}
       APP_AUDIO_STORAGE_DIR: /var/lib/civic-platform/audio
     volumes:
       - private_audio:/var/lib/civic-platform/audio
@@ -64,6 +67,9 @@ services:
       APP_NLP_MODE: ${APP_NLP_MODE:-mock}
       APP_NLP_BASE_URL: ${APP_NLP_BASE_URL:-}
       APP_NLP_API_TOKEN: ${APP_NLP_API_TOKEN:-}
+      APP_AUDIO_MODE: ${APP_AUDIO_MODE:-review}
+      APP_GEMINI_API_KEY: ${APP_GEMINI_API_KEY:-}
+      APP_GEMINI_AUDIO_MODEL: ${APP_GEMINI_AUDIO_MODEL:-gemini-2.5-flash}
       APP_AUDIO_STORAGE_DIR: /var/lib/civic-platform/audio
     volumes:
       - private_audio:/var/lib/civic-platform/audio

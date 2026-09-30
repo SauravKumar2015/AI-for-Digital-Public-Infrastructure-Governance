@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     nlp_mode: str = "mock"
     nlp_base_url: str | None = None
     nlp_api_token: str | None = None
+    audio_mode: str = "review"
+    gemini_api_key: str | None = None
+    gemini_audio_model: str = "gemini-2.5-flash"
     nlp_timeout_seconds: float = 15
     max_text_chars: int = 10000
     max_audio_bytes: int = 15_000_000

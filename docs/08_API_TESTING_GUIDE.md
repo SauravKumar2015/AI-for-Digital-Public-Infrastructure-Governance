@@ -28,9 +28,9 @@ OpenAPI documentation is available at [http://127.0.0.1:8000/docs](http://127.0.
 Base URL: http://127.0.0.1:8000/api/v1
 ```
 
-During local development, `APP_AUTH_MODE=development` is enabled. Do **not** send a bearer token for local requests. Citizen routes default to the `local-citizen` identity. To use a separate citizen identity, send `X-Dev-User: demo-citizen`. For staff-only routes, send `X-Dev-User: local-staff`.
+During local development, `APP_AUTH_MODE=development` is enabled. Every private route requires an explicit `X-Dev-User` header; requests without it receive `401`. For example, use `X-Dev-User: demo-citizen` for citizen routes and `X-Dev-User: local-staff` for staff-only routes. This header is a local development identity shim, not production authentication. In production, configure OIDC and send a verified bearer access token:
 
-In production, development identity headers are ignored. Send the identity provider's access token:
+In production, configure OIDC. Send the identity provider's access token:
 
 ```http
 Authorization: Bearer <OIDC_ACCESS_TOKEN>
@@ -178,7 +178,7 @@ $body = @{
   location = @{ state = 'Maharashtra'; district = 'Pune'; locality = 'Ward 4' }
   consent = $true
 } | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/api/v1/feedback' -ContentType 'application/json' -Body $body
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/api/v1/feedback' -Headers @{ 'X-Dev-User' = 'demo-citizen' } -ContentType 'application/json' -Body $body
 ```
 
 ## 5. Audio upload and submission
@@ -195,6 +195,12 @@ Request:
 
 ```json
 {"mime_type":"audio/webm"}
+```
+
+Local PowerShell example:
+
+```powershell
+$slot = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/api/v1/uploads' -Headers @{ 'X-Dev-User' = 'demo-citizen' } -ContentType 'application/json' -Body '{"mime_type":"audio/webm"}'
 ```
 
 Example `201 Created` response:
@@ -214,14 +220,16 @@ Example `201 Created` response:
 Use multipart form data with the field name `file` and the same content type declared in the upload slot:
 
 ```powershell
-curl.exe -i -X PUT "http://127.0.0.1:8000/api/v1/uploads/<upload-uuid>/content" `
-  -H "X-Dev-User: local-citizen" `
+curl.exe -i -X PUT "http://127.0.0.1:8000/api/v1/uploads/$($slot.upload_id)/content" `
+  -H "X-Dev-User: demo-citizen" `
   -F "file=@recording.webm;type=audio/webm"
 ```
 
+Use the slot's `upload_id` in the URL. The upload must be no larger than the returned `max_bytes` (15,000,000 by default).
+
 Expected response: `204 No Content`.
 
-<!-- ### Create audio feedback
+### Create audio feedback
 
 ```http
 POST /api/v1/feedback
@@ -236,10 +244,23 @@ Request:
   "language":"mr",
   "location":{"state":"Maharashtra","district":"Pune"},
   "consent":true
-} -->
+}
 ```
 
-Expected response: `202 Accepted` with the same receipt shape as text submission. ASR is not configured yet, so the worker marks audio feedback for staff review rather than returning a transcript.
+Expected response: `202 Accepted` with the same receipt shape as text submission. The worker processes the recording asynchronously. By default (`APP_AUDIO_MODE=review`) it queues the recording for staff review. To enable Gemini transcription and classification, set `APP_AUDIO_MODE=gemini` and configure `APP_GEMINI_API_KEY`; the worker stores a transcript and a proposed classification, always marked for human review. Gemini processing sends the submitted recording to Google's Gemini API. Keep consent and the applicable data-processing terms in mind before enabling it for real citizen recordings. The 15,000,000-byte upload cap is enforced per audio file.
+
+Send the create-feedback request with the same identity used for the upload:
+
+```powershell
+$feedback = @{
+  kind = 'audio'
+  upload_id = $slot.upload_id
+  language = 'mr'
+  location = @{ state = 'Maharashtra'; district = 'Pune' }
+  consent = $true
+} | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/api/v1/feedback' -Headers @{ 'X-Dev-User' = 'demo-citizen' } -ContentType 'application/json' -Body $feedback
+```
 
 ## 6. List, read, track, and delete feedback
 
