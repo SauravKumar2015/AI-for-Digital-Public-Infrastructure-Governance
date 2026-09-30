@@ -63,7 +63,7 @@ The `.env.example` is safe to commit and documents required configuration variab
 
 This tree is the proposed application layout. The backend foundation, API, database migration, worker, and local compose setup have now been created under `backend/` and `infra/`. The `frontend/` directory remains intentionally untouched.
 
-The backend currently uses configurable OIDC bearer-token validation, local development identity, a mock NLP adapter by default, and private local audio storage for development. Before using real citizen data or production deployment, select and configure the identity provider, private object storage, ASR provider, and approved NLP endpoint. The language registry is an intake list; its limited capability labels are not an evaluation claim.
+The backend supports app-managed local JWT accounts, configurable OIDC bearer-token validation, a localhost-only development identity shim, and a mock NLP adapter by default. It also has private local audio storage for development. Before using real citizen data, configure production identity, private object storage, and approved NLP/audio providers. The language registry is an intake list; its capability labels are not an evaluation claim.
 
 ## 2. FastAPI Feature Structure
 
@@ -96,7 +96,7 @@ Routes should remain thin.
 
 | Router | Main routes | Responsibility |
 |---|---|---|
-| Auth | `/auth/*` | OIDC login/callback/logout |
+| Auth | `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout` | Local account registration, JWT issuance, refresh rotation, logout; OIDC remains an alternative |
 | Languages | `/languages` | Language registry |
 | Profile | `/me` | Safe profile preferences and account deletion |
 | Uploads | `/uploads` | Private audio upload authorization |

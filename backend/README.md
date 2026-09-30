@@ -22,13 +22,15 @@ cd backend
 python -m app.workers.runner
 ```
 
-The root `.env.example` is configured for the PostgreSQL database `AI for digital instarcture & covernance`; copy it to `.env` and replace `YOUR_PASSWORD` with the PostgreSQL password. If no `.env` is present, local development falls back to `application.db` (SQLite). The API uses an in-process mock classifier and private local audio directory. Local identity defaults to `local-citizen`. Use `X-Dev-User: local-staff` for the configured local staff identity. These development identities are disabled when `APP_ENVIRONMENT=production`.
+The root `.env.example` is configured for the PostgreSQL database `AI for digital instarcture & covernance`; copy it to `.env` and replace `YOUR_PASSWORD` and `APP_JWT_SECRET`. Generate the latter with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Set `APP_AUTH_MODE=local-jwt` for app-managed signup/login and JWT bearer authentication. If no `.env` is present, local development falls back to `application.db` (SQLite). The API uses an in-process mock classifier and private local audio directory. The development identity shim (`APP_AUTH_MODE=development`) remains restricted to localhost and is disabled in production. OIDC bearer authentication is also supported.
 
 ## Configuration
 
-Set `APP_DATABASE_URL` in the root `.env` to the URL-encoded database name. Production must use `APP_AUTH_MODE=oidc` with issuer, audience, and JWKS URL, PostgreSQL, private object storage integration, TLS at the edge, and a managed secret store. Do not enable development auth in production. `APP_NLP_MODE=http` enables the private NLP adapter; without that service audio remains review-only because no ASR adapter is configured.
+Set `APP_DATABASE_URL` in the root `.env` to the URL-encoded database name. App-managed local JWT mode requires a random `APP_JWT_SECRET`; access tokens last 15 minutes and refresh tokens rotate on use. OIDC mode requires issuer, audience, and JWKS URL. A production deployment also needs PostgreSQL, HTTPS, managed secrets, and private object storage. Do not enable development auth in production. `APP_NLP_MODE=http` enables the private NLP adapter; audio processing can use Gemini when separately configured.
 
-The local upload implementation stores audio under `APP_AUDIO_STORAGE_DIR` and is intended only for the local demo. Replace it with a private object-storage adapter before deployment. Database migration 0001 defines the initial schema.
+The authentication API is `POST /api/v1/auth/signup`, `/login`, `/refresh`, and `/logout`. Sign-up creates citizen accounts only. Email verification, password reset, and MFA are not implemented yet; see the root API testing guide for request examples and deployment limitations.
+
+The local upload implementation stores audio under `APP_AUDIO_STORAGE_DIR` and accepts files up to 15,000,000 bytes. Audio defaults to staff review; set `APP_AUDIO_MODE=gemini` and `APP_GEMINI_API_KEY` to enable Gemini transcription/classification in the worker. Every resulting classification remains subject to staff review. The audio is sent to Google's Gemini API when that mode is enabled. Replace local file storage with a private object-storage adapter before deployment. Database migration 0001 defines the initial schema.
 
 ## API
 

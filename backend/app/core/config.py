@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./application.db"
     auth_mode: str = "development"
+    jwt_secret: str | None = None
+    jwt_issuer: str = "civic-platform-api"
+    jwt_audience: str = "civic-platform-client"
+    jwt_access_minutes: int = 15
+    jwt_refresh_days: int = 30
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None
@@ -18,6 +23,9 @@ class Settings(BaseSettings):
     nlp_mode: str = "mock"
     nlp_base_url: str | None = None
     nlp_api_token: str | None = None
+    audio_mode: str = "review"
+    gemini_api_key: str | None = None
+    gemini_audio_model: str = "gemini-2.5-flash"
     nlp_timeout_seconds: float = 15
     max_text_chars: int = 10000
     max_audio_bytes: int = 15_000_000

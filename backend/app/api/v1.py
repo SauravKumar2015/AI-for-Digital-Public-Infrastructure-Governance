@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.security import Principal, current_user, require_staff
+from app.core.auth_models import AuthAccount, RefreshSession
 from app.features.feedback.models import (AuditEvent, Comment, Feedback, FeedbackGroup, ProcessingRun,
                                           StatusEvent, Upload, UserProfile)
 from app.features.feedback.schemas import (ClassificationChange, CommentCreate, FeedbackCreate,
@@ -64,6 +65,13 @@ def patch_profile(payload: ProfilePatch, db: Db, user: User):
 @router.delete("/me", status_code=202)
 def delete_account(db: Db, user: User):
     profile = db.get(UserProfile, user.subject)
+    account = db.get(AuthAccount, user.subject)
+    if account:
+        account.is_active = False
+        db.execute(update(RefreshSession).where(
+            RefreshSession.account_id == account.id,
+            RefreshSession.revoked_at.is_(None),
+        ).values(revoked_at=datetime.now(timezone.utc)))
     for item in db.scalars(select(Feedback).where(Feedback.owner_id == user.subject, Feedback.deleted_at.is_(None))):
         delete_feedback(db, item)
     if profile:
@@ -140,7 +148,8 @@ def feedback_detail(feedback_id: str, db: Db, user: User):
     run = db.scalar(select(ProcessingRun).where(ProcessingRun.feedback_id == item.id).order_by(ProcessingRun.created_at.desc()))
     return {"id": item.id, "kind": item.kind, "text": item.original_text, "language": item.declared_language,
             "script": item.script, "location": item.location, "status": item.government_status,
-            "processing_state": run.state if run else "queued", "proposal": run.proposal if run else None,
+            "processing_state": run.state if run else "queued", "transcript": run.transcript if run else None,
+            "proposal": run.proposal if run else None,
             "created_at": item.created_at}
 
 
@@ -209,6 +218,7 @@ def staff_feedback(db: Db, user: Staff, status: str | None = None, category: str
         result.append({"id": item.id, "kind": item.kind, "text": item.original_text,
                        "language": item.declared_language, "location": item.location,
                        "status": item.government_status, "processing_state": run.state if run else "queued",
+                       "transcript": run.transcript if run else None,
                        "proposal": run.proposal if run else None, "created_at": item.created_at})
     return result
 

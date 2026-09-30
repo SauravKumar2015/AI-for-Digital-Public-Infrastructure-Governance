@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -28,14 +29,66 @@ def process_one() -> bool:
             db.commit()
             return True
         if item.kind == "audio":
-            run.state = "needs_review"
-            run.needs_human_review = True
-            run.error_code = "asr_not_configured"
-            run.completed_at = datetime.now(timezone.utc)
-            job.state = "complete"
-            db.add(StatusEvent(feedback_id=item.id, status=item.government_status,
-                               public_message="Your recording was received and is waiting for staff review.", actor_id="system"))
+            settings = get_settings()
+            asset = db.scalar(select(FeedbackAsset).where(FeedbackAsset.feedback_id == item.id))
+            audio_path = (Path(settings.audio_storage_dir).resolve() / Path(asset.object_key).name) if asset else None
+            if settings.audio_mode != "gemini" or not settings.gemini_api_key or not audio_path or not audio_path.is_file():
+                run.state = "needs_review"
+                run.needs_human_review = True
+                run.error_code = "audio_processing_unavailable"
+                run.completed_at = datetime.now(timezone.utc)
+                job.state = "complete"
+                db.add(StatusEvent(feedback_id=item.id, status=item.government_status,
+                                   public_message="Your recording was received and is waiting for staff review.", actor_id="system"))
+                db.commit()
+                return True
+            run.state = "transcribing"
             db.commit()
+            try:
+                from app.clients.gemini_audio import transcribe_and_classify
+
+                transcript, proposal = transcribe_and_classify(
+                    audio_path=audio_path, mime_type=asset.mime_type,
+                    language=item.declared_language, api_key=settings.gemini_api_key,
+                    model=settings.gemini_audio_model,
+                )
+            except Exception:
+                with SessionLocal() as failed_db:
+                    failed_job = failed_db.get(ProcessingJob, job.id)
+                    failed_run = failed_db.get(ProcessingRun, run.id)
+                    if failed_job.attempts < 3:
+                        failed_job.state = "retry"
+                        failed_run.state = "queued"
+                    else:
+                        failed_job.state = "complete"
+                        failed_run.state = "needs_review"
+                        failed_run.needs_human_review = True
+                        failed_run.error_code = "audio_inference_unavailable"
+                        failed_run.completed_at = datetime.now(timezone.utc)
+                    failed_db.commit()
+                return True
+            with SessionLocal() as done_db:
+                done_job = done_db.get(ProcessingJob, job.id)
+                done_run = done_db.get(ProcessingRun, run.id)
+                current_item = done_db.get(Feedback, item.id)
+                if current_item is None or current_item.deleted_at is not None:
+                    done_run.transcript = None
+                    done_run.proposal = None
+                    done_run.state = "cancelled"
+                    done_job.state = "cancelled"
+                else:
+                    done_run.transcript = transcript
+                    done_run.proposal = proposal.model_dump()
+                    done_run.detected_language = proposal.detected_language
+                    done_run.model_name = proposal.model_name
+                    done_run.model_version = proposal.model_version
+                    done_run.taxonomy_version = proposal.taxonomy_version
+                    done_run.confidence = proposal.confidence
+                    done_run.needs_human_review = True
+                    done_run.state = "needs_review"
+                    done_run.completed_at = datetime.now(timezone.utc)
+                    done_job.state = "complete"
+                done_db.commit()
             return True
         run.state = "classifying"
         db.commit()
