@@ -1,0 +1,10 @@
+gradio
+fastapi
+uvicorn
+torch
+torchaudio
+transformers
+onnxruntime
+requests
+huggingface_hub
+google-genai
