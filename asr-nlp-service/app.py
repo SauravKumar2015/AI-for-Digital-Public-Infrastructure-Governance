@@ -75,7 +75,7 @@ Respond ONLY in this exact JSON format, no markdown, no extra text:
 
 Priority guide: complaints about basic services with no response yet (health, water, electricity, corruption) = high; scheme applications/queries = medium; general info requests = low.
 """
-    response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.strip("`").replace("json", "", 1).strip()
@@ -125,7 +125,7 @@ If unsure of any field, use "unknown" rather than guessing.
 Respond ONLY in this exact JSON format, no markdown, no extra text:
 {{"feedback_type": "...", "category": "...", "severity": "...", "urgency": "...", "sentiment": "...", "summary": "...", "evidence": ["..."], "confidence": 0.0, "needs_human_review": true}}
 """
-    response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     raw = response.text.strip()
     if raw.startswith("```"):
         raw = raw.strip("`").replace("json", "", 1).strip()
