@@ -1,0 +1,9 @@
+fastapi<1,>=0.115
+uvicorn[standard]<1,>=0.30
+pydantic-settings<3,>=2.4
+sqlalchemy<3,>=2.0
+psycopg[binary]<4,>=3.2
+alembic<2,>=1.13
+httpx<1,>=0.27
+PyJWT[crypto]<3,>=2.9
+python-multipart<1,>=0.0.9

@@ -1,0 +1,82 @@
+services:
+  database:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: "AI for digital instarcture & covernance"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the deployment environment}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d 'AI for digital instarcture & covernance'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  migrate:
+    build:
+      context: ../backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      APP_ENVIRONMENT: production
+      APP_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/AI%20for%20digital%20instarcture%20%26%20covernance
+      APP_AUTH_MODE: oidc
+      APP_OIDC_ISSUER: ${APP_OIDC_ISSUER:?Set OIDC issuer}
+      APP_OIDC_AUDIENCE: ${APP_OIDC_AUDIENCE:?Set OIDC audience}
+      APP_OIDC_JWKS_URL: ${APP_OIDC_JWKS_URL:?Set OIDC JWKS URL}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks: [private]
+
+  api:
+    build:
+      context: ../backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_ENVIRONMENT: production
+      APP_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/AI%20for%20digital%20instarcture%20%26%20covernance
+      APP_AUTH_MODE: oidc
+      APP_OIDC_ISSUER: ${APP_OIDC_ISSUER:?Set OIDC issuer}
+      APP_OIDC_AUDIENCE: ${APP_OIDC_AUDIENCE:?Set OIDC audience}
+      APP_OIDC_JWKS_URL: ${APP_OIDC_JWKS_URL:?Set OIDC JWKS URL}
+      APP_NLP_MODE: ${APP_NLP_MODE:-mock}
+      APP_NLP_BASE_URL: ${APP_NLP_BASE_URL:-}
+      APP_NLP_API_TOKEN: ${APP_NLP_API_TOKEN:-}
+      APP_AUDIO_STORAGE_DIR: /var/lib/civic-platform/audio
+    volumes:
+      - private_audio:/var/lib/civic-platform/audio
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [private, edge]
+
+  worker:
+    build:
+      context: ../backend
+    command: ["civic-platform-worker"]
+    environment:
+      APP_ENVIRONMENT: production
+      APP_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@database:5432/AI%20for%20digital%20instarcture%20%26%20covernance
+      APP_AUTH_MODE: oidc
+      APP_NLP_MODE: ${APP_NLP_MODE:-mock}
+      APP_NLP_BASE_URL: ${APP_NLP_BASE_URL:-}
+      APP_NLP_API_TOKEN: ${APP_NLP_API_TOKEN:-}
+      APP_AUDIO_STORAGE_DIR: /var/lib/civic-platform/audio
+    volumes:
+      - private_audio:/var/lib/civic-platform/audio
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [private]
+
+volumes:
+  postgres_data:
+  private_audio:
+
+networks:
+  private:
+    internal: true
+  edge: {}

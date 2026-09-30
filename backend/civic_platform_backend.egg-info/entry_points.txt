@@ -1,0 +1,2 @@
+[console_scripts]
+civic-platform-worker = app.workers.runner:main
