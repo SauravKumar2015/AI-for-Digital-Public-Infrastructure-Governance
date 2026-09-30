@@ -48,6 +48,7 @@ ASR, a production classifier such as Gemini, hosted object storage, and a fronte
 - SQLAlchemy 2, psycopg, and PostgreSQL
 - Alembic migrations
 - HTTPX for the external NLP adapter
+- `pwdlib` with Argon2id password hashing for local accounts
 
 ## Run locally on Windows
 
@@ -67,6 +68,12 @@ The sample database name contains spaces and an ampersand, so they are URL-encod
     APP_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/AI%20for%20digital%20instarcture%20%26%20covernance
 
 Replace YOUR_PASSWORD with your local PostgreSQL password. Percent-encode reserved characters in a password if needed. Never commit .env, credentials, citizen recordings, or model weights.
+
+Generate a JWT signing secret and set it in `.env` as `APP_JWT_SECRET`. Keep `APP_AUTH_MODE=local-jwt` (as in `.env.example`):
+
+    python -c "import secrets; print(secrets.token_urlsafe(48))"
+
+Copy the printed value into `.env`; do not use the example text as a key. The [API guide](docs/08_API_TESTING_GUIDE.md#sign-up-and-get-tokens) shows signup, login, refresh, and logout requests.
 
 Create the virtual environment and install the backend:
 
@@ -88,21 +95,11 @@ Open a second PowerShell terminal for the worker:
 
 The worker is a long-running process; leave its terminal open while using the API. Interactive API documentation is at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). Database readiness is at [http://127.0.0.1:8000/api/v1/health/ready](http://127.0.0.1:8000/api/v1/health/ready).
 
-### Local authentication
+### Authentication
 
-Local development defaults to APP_AUTH_MODE=development. Every private API route requires an explicit development identity header; anonymous requests receive `401`. This header is a local-only shim, not production authentication. Citizen request example:
+Local setup uses app-managed JWT authentication. Generate a signing secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`, put it in `APP_JWT_SECRET` in `.env`, and set `APP_AUTH_MODE=local-jwt`. Apply database migrations with `alembic upgrade head`. Register with `POST /api/v1/auth/signup` or sign in with `POST /api/v1/auth/login`; send the returned access token as `Authorization: Bearer <token>`. Refresh tokens rotate through `/api/v1/auth/refresh` and can be revoked with `/api/v1/auth/logout`. New accounts have the citizen role; staff accounts require administrative provisioning.
 
-    Header: X-Dev-User: local-citizen
-
-Staff-only routes require this development identity:
-
-    X-Dev-User: local-staff
-
-Example:
-
-    Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/v1/analytics/summary' -Headers @{ 'X-Dev-User' = 'local-staff' }
-
-Development identity headers are for local development only. Production requires configured OIDC issuer, audience, JWKS URL, and a bearer token with an allowed staff role. Audio uploads accept up to 15,000,000 bytes; Gemini processing is optional and disabled by default. See the [audio guide](docs/08_API_TESTING_GUIDE.md#audio-upload-and-submission) for configuration.
+For production, use either `local-jwt` with HTTPS, a securely managed signing key, account verification and recovery controls, or an OIDC provider using `APP_AUTH_MODE=oidc`. `APP_AUTH_MODE=development` remains a localhost-only identity shim and is not real authentication. Audio uploads accept up to 15,000,000 bytes; Gemini processing is optional and disabled by default. See the [API guide](docs/08_API_TESTING_GUIDE.md) and [audio guide](docs/08_API_TESTING_GUIDE.md#audio-upload-and-submission).
 
 ## API overview
 
@@ -112,6 +109,7 @@ All routes are under /api/v1.
 |---|---|---|
 | Health | GET /health/live, GET /health/ready | Public |
 | Languages | GET /languages | Public |
+| Authentication | POST /auth/signup, /login, /refresh, /logout | Public credential/token exchange |
 | Profile | GET/PATCH/DELETE /me | Authenticated user |
 | Feedback | POST /feedback, GET /me/feedback, GET /feedback/{id} | Authenticated; ownership checked |
 | Uploads | POST /uploads, PUT /uploads/{id}/content | Authenticated user |
@@ -139,10 +137,10 @@ Audio uploads support up to 15,000,000 bytes (15 MB). Audio processing defaults 
 
 - **Frontend:** not included yet.
 - **Text classification:** mock by default; the HTTP adapter requires a compatible deployed classifier.
-- **Audio/ASR:** audio intake exists, but the worker does not call an ASR model. Audio jobs are marked for staff review.
+- **Audio/ASR:** Gemini audio processing is optional and requires an API key; otherwise recordings go to staff review.
 - **Groups:** the staff route can confirm a supplied group ID, but there is no group creation/listing API to obtain one.
 - **Uploads:** local filesystem storage is for development only. Production needs private object storage and a retention/deletion policy.
-- **Authentication:** development identity is local-only. Production OIDC settings and the identity-provider login flow are not supplied here.
+- **Authentication:** app-managed sign-up/login is implemented with Argon2id password hashes and rotating refresh tokens. Email verification, password recovery, and MFA are not implemented; OIDC is preferable for public production deployments.
 - **Analytics:** priority values are raw report counts, not population-adjusted estimates or funding recommendations.
 - **Language quality:** configured languages do not imply that every AI capability is implemented or evaluated for each language.
 

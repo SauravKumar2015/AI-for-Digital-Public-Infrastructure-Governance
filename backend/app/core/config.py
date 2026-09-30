@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str = "sqlite:///./application.db"
     auth_mode: str = "development"
+    jwt_secret: str | None = None
+    jwt_issuer: str = "civic-platform-api"
+    jwt_audience: str = "civic-platform-client"
+    jwt_access_minutes: int = 15
+    jwt_refresh_days: int = 30
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_jwks_url: str | None = None

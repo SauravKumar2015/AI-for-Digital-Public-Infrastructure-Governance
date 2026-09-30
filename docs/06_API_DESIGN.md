@@ -2,7 +2,7 @@
 
 For runnable local examples and representative responses, see [API Testing Guide](08_API_TESTING_GUIDE.md).
 
-Version prefix: `/api/v1`. All application routes below are relative to this prefix. JSON over HTTPS. API keys for AI providers stay on the server. Timestamps use ISO 8601 UTC. This design assumes an identity provider (OIDC/OAuth) issues the user's identity; do not build password storage/authentication from scratch for a hackathon.
+Version prefix: `/api/v1`. All application routes below are relative to this prefix. JSON over HTTPS. API keys for AI providers stay on the server. Timestamps use ISO 8601 UTC. The implementation supports app-managed accounts (`local-jwt`) and OIDC bearer-token validation. OIDC is preferable for public production deployments when an identity provider is available; the local account flow does not yet include email verification, password recovery, or MFA.
 
 ## Controller/router inventory
 
@@ -10,7 +10,7 @@ Implement these as FastAPI routers. Keep route handlers thin: authenticate/autho
 
 | Router/controller | Main routes | Responsibility |
 |---|---|---|
-| `AuthRouter` | `GET /auth/login`; `GET /auth/callback`; `POST /auth/logout` | Start hosted OIDC login, validate callback/state, establish or revoke the application session. Passwords remain with the identity provider. |
+| `AuthRouter` | `POST /auth/signup`; `POST /auth/login`; `POST /auth/refresh`; `POST /auth/logout` | Register a citizen, verify a password, issue a short-lived access JWT and rotating refresh token, or revoke the refresh-token family. OIDC bearer validation is also supported. |
 | `LanguageRouter` | `GET /languages` | Return configured 40+ language/script entries and capabilities. |
 | `ProfileRouter` | `GET/PATCH/DELETE /me` | Current user's profile; only safe preference fields can be edited. |
 | `UploadRouter` | `POST /uploads` | Issue private, short-lived audio upload slots and validate completed upload. |
@@ -21,7 +21,7 @@ Implement these as FastAPI routers. Keep route handlers thin: authenticate/autho
 | `AnalyticsRouter` | `GET /analytics/summary`; `GET /analytics/priorities` | Authorized, aggregate dashboard data and transparent priority components. |
 | `HealthRouter` | `GET /health/live`; `GET /health/ready` | Liveness/readiness checks; readiness should check dependencies required for serving API traffic; NLP availability may be reported separately so a temporary NLP outage does not make the entire citizen API unavailable. Do not reveal secrets or stack traces. |
 
-All application routes are authenticated except login/callback, health endpoints, and the language registry when it contains no private data. Apply object ownership checks to every user-facing feedback/comment route. The custom NLP inference endpoint is internal service-to-service traffic, not part of the public application API and must not be exposed through the `/api/v1` browser-facing routers.
+All application routes are authenticated except sign-up/login, health endpoints, and the language registry when it contains no private data. Refresh/logout require a valid refresh-token secret. Apply object ownership checks to every user-facing feedback/comment route. The custom NLP inference endpoint is internal service-to-service traffic, not part of the public application API and must not be exposed through the `/api/v1` browser-facing routers.
 
 ## 1. Core data and storage model
 
@@ -29,7 +29,9 @@ Store text and structured metadata in PostgreSQL. Store audio bytes in **private
 
 Suggested tables/SQLAlchemy models:
 
-- `users`: identity-provider subject ID, role, safe profile fields, preferred UI language, created/updated timestamps. Authentication credentials remain with the identity provider.
+- `users`: subject ID, safe profile fields, preferred UI language, created/updated timestamps.
+- `auth_accounts`: normalized email, Argon2id password hash, citizen/staff role, active state, created timestamp.
+- `auth_refresh_sessions`: account, refresh-token hash, token family, expiry, consumed/revoked timestamps. Raw refresh tokens are not stored.
 - `feedback`: UUID, owner user ID, immutable original text or media reference, declared language, script if known, location supplied by user, source channel, created time, lifecycle/deletion state.
 - `feedback_assets`: feedback ID, private object key, MIME type, byte size, duration, checksum, upload/retention state.
 - `processing_runs`: feedback ID, detected language, transcript (if audio), optional translation, proposed classification, provider/model and taxonomy/prompt versions, confidence/review state, error code, timestamps.
@@ -41,7 +43,7 @@ Keep submitted language and original text/audio distinct from detected language,
 
 ## 2. General rules
 
-- All endpoints require an authenticated session except public language/configuration reads and the identity provider's own login flow.
+- All endpoints require an authenticated user/staff access token except health/language reads and sign-up/login. Refresh/logout require possession of a valid refresh-token credential.
 - Use UUIDs, pagination (`limit`, `cursor`), server-side authorization, request IDs, payload limits, and rate limits.
 - Return errors as `{ "error": { "code": "...", "message": "...", "request_id": "..." } }`; never return provider stack traces.
 - Return `202 Accepted` after a submission is safely persisted while background processing is pending.
@@ -68,7 +70,7 @@ The frontend uses this list for language selection. Localized interface labels s
 
 ### Authentication
 
-Use the selected identity provider's hosted login / OIDC flow. On success, the backend establishes a secure, HTTP-only, same-site session cookie (or validates short-lived bearer tokens if the client architecture requires them). The application API does not store passwords.
+In `local-jwt` mode, use `POST /api/v1/auth/signup` and `POST /api/v1/auth/login` with an email and password. Passwords are hashed with Argon2id. Responses contain a 15-minute HS256 access token and an opaque 30-day refresh token. Send the access token as `Authorization: Bearer <token>`. Each refresh call rotates the refresh token; reusing an old token revokes its token family. Keep `APP_JWT_SECRET` randomly generated and private. New users are always citizens. OIDC mode instead validates access JWTs issued by the configured provider.
 
 - `GET /api/v1/me`: return current user's safe profile and role.
 - `PATCH /api/v1/me`: update only allow-listed fields such as `display_name`, `preferred_language`, `preferred_script`, and optional accessibility preferences.

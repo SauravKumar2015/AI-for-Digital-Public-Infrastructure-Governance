@@ -6,8 +6,11 @@ from typing import Annotated
 import jwt
 from fastapi import Depends, Header, HTTPException, Request, status
 from jwt import PyJWKClient
+from sqlalchemy.orm import Session
 
+from app.core.auth_models import AuthAccount
 from app.core.config import get_settings
+from app.core.db import get_db
 
 
 @dataclass(frozen=True)
@@ -21,12 +24,33 @@ def _jwks_client(url: str) -> PyJWKClient:
     return PyJWKClient(url, cache_jwk_set=True, lifespan=300)
 
 
-def current_user(request: Request, authorization: Annotated[str | None, Header()] = None,
+def current_user(db: Annotated[Session, Depends(get_db)], request: Request,
+                 authorization: Annotated[str | None, Header()] = None,
                  x_dev_user: Annotated[str | None, Header()] = None) -> Principal:
     settings = get_settings()
+    if settings.auth_mode == "development" and settings.environment == "production":
+        raise HTTPException(status_code=500, detail="Development authentication is disabled in production")
+    if settings.auth_mode in {"development", "local-jwt"} and authorization and authorization.startswith("Bearer "):
+        if not settings.jwt_secret or len(settings.jwt_secret) < 32:
+            raise HTTPException(status_code=500, detail="Local JWT authentication is not configured")
+        try:
+            claims = jwt.decode(
+                authorization.removeprefix("Bearer "), settings.jwt_secret,
+                algorithms=["HS256"], issuer=settings.jwt_issuer, audience=settings.jwt_audience,
+                options={"require": ["sub", "exp", "iat", "jti", "token_use", "role"]},
+            )
+            if claims.get("token_use") != "access":
+                raise jwt.InvalidTokenError("Not an access token")
+            account = db.get(AuthAccount, str(claims["sub"])) if db else None
+            if account is None or not account.is_active:
+                raise jwt.InvalidTokenError("Account is inactive")
+            return Principal(account.id, account.role)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Invalid access token") from exc
+    if settings.auth_mode == "local-jwt":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthenticated")
     if settings.auth_mode == "development":
-        if settings.environment == "production":
-            raise HTTPException(status_code=500, detail="Development auth is disabled in production")
         host = request.client.host if request and request.client else ""
         try:
             local_request = ipaddress.ip_address(host).is_loopback

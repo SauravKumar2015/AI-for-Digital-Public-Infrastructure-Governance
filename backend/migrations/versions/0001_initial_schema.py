@@ -11,8 +11,12 @@ depends_on = None
 
 
 def upgrade():
-    Base.metadata.create_all(bind=op.get_bind())
+    legacy_tables = [table for table in Base.metadata.sorted_tables
+                     if table.name not in {"auth_accounts", "auth_refresh_sessions"}]
+    Base.metadata.create_all(bind=op.get_bind(), tables=legacy_tables)
 
 
 def downgrade():
-    Base.metadata.drop_all(bind=op.get_bind())
+    legacy_tables = [table for table in Base.metadata.sorted_tables
+                     if table.name not in {"auth_accounts", "auth_refresh_sessions"}]
+    Base.metadata.drop_all(bind=op.get_bind(), tables=legacy_tables)

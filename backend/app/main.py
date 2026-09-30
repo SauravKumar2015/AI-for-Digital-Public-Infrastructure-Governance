@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import router as v1_router
+from app.api.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 
@@ -41,3 +42,4 @@ async def request_controls(request: Request, call_next):
 
 
 app.include_router(v1_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["authentication"])

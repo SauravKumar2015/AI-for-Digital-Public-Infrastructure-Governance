@@ -5,5 +5,7 @@ sqlalchemy<3,>=2.0
 psycopg[binary]<4,>=3.2
 alembic<2,>=1.13
 httpx<1,>=0.27
+google-genai<2,>=1.0
+pwdlib[argon2]<1,>=0.2
 PyJWT[crypto]<3,>=2.9
 python-multipart<1,>=0.0.9

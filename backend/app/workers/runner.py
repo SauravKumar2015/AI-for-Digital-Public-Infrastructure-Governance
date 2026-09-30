@@ -6,7 +6,6 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from app.clients.gemini_audio import transcribe_and_classify
 from app.clients.nlp import get_nlp_client
 from app.core.config import get_settings
 from app.core.db import SessionLocal
@@ -46,6 +45,8 @@ def process_one() -> bool:
             run.state = "transcribing"
             db.commit()
             try:
+                from app.clients.gemini_audio import transcribe_and_classify
+
                 transcript, proposal = transcribe_and_classify(
                     audio_path=audio_path, mime_type=asset.mime_type,
                     language=item.declared_language, api_key=settings.gemini_api_key,
